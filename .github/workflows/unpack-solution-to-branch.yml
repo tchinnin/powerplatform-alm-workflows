@@ -30,6 +30,7 @@ jobs:
           # Configure email/name
           git config user.email "${{ github.event.sender.id }}+${{ github.event.sender.login }}@users.noreply.github.com"
           git config user.name "${{ github.event.sender.login }}"
+          git fetch
 
       - name: Configure Git existing branch
         if: ${{ github.event.inputs.branchToCreate == '' }}
