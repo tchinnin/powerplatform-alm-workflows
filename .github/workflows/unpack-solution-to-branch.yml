@@ -1,4 +1,4 @@
-name: Unoack solution to branch
+name: Unpack solution to branch
 
 on:
   workflow_call:
