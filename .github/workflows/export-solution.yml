@@ -9,7 +9,7 @@ on:
     secrets:
       ENV_URL:
         required: true
-      DATAEVRSE_APPID:
+      DATAVERSE_APPID:
         required: true
       DATAVERSE_SECRET:
         required: true
