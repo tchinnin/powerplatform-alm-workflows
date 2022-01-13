@@ -1,0 +1,63 @@
+name: Export solution
+
+on:
+  workflow_call:
+    inputs:
+      solutionName:
+        required: true
+        type: string
+      gh-environment:
+        required: true
+        type: string
+
+jobs:
+  export-solution:
+    name: export-solution
+    runs-on: windows-latest
+    environment:
+      name: ${{ inputs.gh-environment }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Publish Solution
+        uses: microsoft/powerplatform-actions/publish-solution@0.5.1
+        with:
+          environment-url: ${{ secrets.ENV_URL }}
+          app-id: ${{ secrets.DATAVERSE_APPID }}
+          client-secret: ${{ secrets.DATAVERSE_SECRET }}
+          tenant-id: ${{ secrets.TENANT_ID }}
+
+      - name: Export Unmanaged Solution
+        uses: microsoft/powerplatform-actions/export-solution@0.5.1
+        with:
+          environment-url: ${{ secrets.ENV_URL }}
+          app-id: ${{ secrets.DATAVERSE_APPID }}
+          client-secret: ${{ secrets.DATAVERSE_SECRET }}
+          tenant-id: ${{ secrets.TENANT_ID }}
+          solution-name: ${{ inputs.solutionName }}
+          solution-output-file: '${{ runner.temp }}\exported-zip-solutions\${{ inputs.solutionName }}.zip'
+          managed: false  
+
+      - name: Export Managed Solution
+        uses: microsoft/powerplatform-actions/export-solution@0.5.1
+        with:
+          environment-url: ${{ secrets.ENV_URL }}
+          app-id: ${{ secrets.DATAVERSE_APPID }}
+          client-secret: ${{ secrets.DATAVERSE_SECRET }}
+          tenant-id: ${{ secrets.TENANT_ID }}
+          solution-name: ${{ inputs.solutionName }}
+          solution-output-file: '${{ runner.temp }}\exported-zip-solutions\${{ inputs.solutionName }}_managed.zip'
+          managed: true  
+
+      - name: Publish Unmanaged Solution artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ inputs.solutionName }}
+          path: ${{ runner.temp }}/exported-zip-solutions/${{ inputs.solutionName }}.zip
+
+      - name: Publish Managed Solution artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ inputs.solutionName }}_managed
+          path: ${{ runner.temp }}/exported-zip-solutions/${{ inputs.solutionName }}_managed.zip
+      

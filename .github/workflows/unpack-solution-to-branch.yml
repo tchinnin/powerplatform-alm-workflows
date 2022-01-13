@@ -1,0 +1,137 @@
+name: Unoack solution to branch
+
+on:
+  workflow_call:
+    inputs:
+      solutionName:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      branchToCreate:
+        required: true
+        type: string
+      commitMessage:
+        required: true
+        type: string
+
+jobs:
+  export-solution:
+    name: export-solution
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout branch ${{ inputs.branch }}
+        if: ${{ inputs.branchToCreate == '' }}
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Checkout branch ${{ inputs.branchToCreate }}
+        if: ${{ inputs.branchToCreate != '' }}
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ env.new_branch_name }}
+
+      - name: Configure Git User
+        run: |
+          # Configure email/name
+          git config user.email "${{ github.event.sender.id }}+${{ github.event.sender.login }}@users.noreply.github.com"
+          git config user.name "${{ github.event.sender.login }}"
+
+      - name: Get artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: ${{ inputs.solutionName }}
+          path: ${{ runner.temp }}/exported-zip-solutions
+  
+      - name: Unpack Solution
+        uses: microsoft/powerplatform-actions/unpack-solution@0.5.1
+        with:
+          solution-file: '${{ runner.temp }}\exported-zip-solutions\${{ inputs.solutionName }}.zip'
+          solution-folder: .\${{ inputs.solutionName }}\SolutionPackage
+          solution-type: Unmanaged
+          overwrite-files: true
+
+      - name: Update Solution XML Version
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path ".\${{ inputs.solutionName }}\SolutionPackage\**\Solution.xml" | 
+          ForEach-Object {
+            (Get-Content $_.FullName) `
+              -replace '<Version>[\s\S]*?<\/Version>', '<Version>0.0.0.0</Version>' |
+            Out-File $_.FullName
+          }
+
+      - name: Install Power Apps CLI
+        shell: pwsh
+        id: install-pac
+        run: |
+          $nugetPackage = "Microsoft.PowerApps.CLI"
+          $outFolder = "${{ runner.temp }}\pac"
+          nuget install $nugetPackage -OutputDirectory $outFolder
+          $pacNugetFolder = Get-ChildItem $outFolder | Where-Object {$_.Name -match $nugetPackage + "."}
+          $pacPath = $pacNugetFolder.FullName + "\tools"
+          echo "::set-output name=pacPath::$pacPath"
+
+      - name: Unpack MSAPP
+        shell: pwsh
+        run: |
+           Get-ChildItem -Path ".\${{ inputs.solutionName }}" -Recurse -Filter *.msapp | 
+            ForEach-Object {
+                $unpackedPath = $_.FullName.Replace(".msapp", "_msapp_src")
+                $env:PATH = $env:PATH + ";" + "${{ steps.install-pac.outputs.pacPath }}"
+                pac canvas unpack --msapp $_.FullName --sources $unpackedPath
+                del $_.FullName
+            }
+            
+      - name: Clear Connection parameters JSON files
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path ".\${{ inputs.solutionName }}" -Recurse -Filter *_connectionparameters.json | 
+            ForEach-Object {
+              Clear-Content $_.FullName
+            }
+
+      - name: Format JSON files
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/stedolan/jq/releases/download/jq-1.6/jq-win64.exe -OutFile  jq.exe
+          Get-ChildItem -Path ".\${{ inputs.solutionName }}\SolutionPackage" -Recurse -Filter *.json | 
+              ForEach-Object {
+              #skip canvas app folder because canvas team already handles this for canvas unpack
+                if(-not $_.FullName.Contains('CanvasApps')) {
+                  Write-Host $_.FullName
+                  $formatted = .\jq.exe . $_.FullName --sort-keys
+                  $formatted | Out-File $_.FullName -Encoding UTF8
+                }
+              }
+          del jq.exe
+
+      - name: Delete Environment Variables values
+        shell: pwsh
+        run: Get-ChildItem -Path ".\${{ inputs.solutionName }}\SolutionPackage\environmentvariabledefinitions" -Recurse -Filter environmentvariablevalues.json | Remove-Item
+
+      - name: Add changes to Git
+        run: git add --all
+
+      - name: Commit changes to branch
+        shell: pwsh
+        run: |
+          $gitStatus = iex "git status --porcelain"
+            if ($gitStatus) {
+                git commit -m "${{ inputs.commitMessage }}"
+            }
+            else {
+                Write-Warning "There is nothing to commit. No changes have been made since the previous commit. If this is unexpected make sure your changes have been published before committing again."
+                exit 1;
+            }
+
+      - name: Push to Git existing branch
+        if: ${{ inputs.branchToCreate == '' }}
+        run: git push origin ${{ inputs.branch }}
+
+      - name: Push to Git new branch
+        if: ${{ inputs.branchToCreate != '' }}
+        run: git push origin dev-${{ inputs.branchToCreate }}
