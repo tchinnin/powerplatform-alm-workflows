@@ -134,4 +134,4 @@ jobs:
 
       - name: Push to Git new branch
         if: ${{ inputs.branchToCreate != '' }}
-        run: git push origin dev-${{ inputs.branchToCreate }}
+        run: git push origin ${{ inputs.branchToCreate }}
