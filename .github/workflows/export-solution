@@ -6,16 +6,20 @@ on:
       solutionName:
         required: true
         type: string
-      gh-environment:
+    secrets:
+      ENV_URL:
         required: true
-        type: string
+      DATAEVRSE_APPID:
+        required: true
+      DATAVERSE_SECRET:
+        required: true
+      TENANT_ID:
+        required: true
 
 jobs:
   export-solution:
     name: export-solution
     runs-on: windows-latest
-    environment:
-      name: ${{ inputs.gh-environment }}
     steps:
       - uses: actions/checkout@v2
 
